@@ -35,18 +35,12 @@ public class Receiver {
       byte[] chksum = Arrays.copyOfRange(header, 16, 18);
       byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-      byte[] seq = new byte[4];
-      for (int i = 0; i < 4; i++){
-        seq[i] = header[i+4];
-      }
-      int seq_num_2 = intFromByteArray(seq);
       short source_port = shortFromByteArray(source_port_a);
       short dest_port = shortFromByteArray(dest_port_a);
       seq_num = intFromByteArray(seq_num_a);
       int ack_num = intFromByteArray(ack_num_a);
 
       System.out.println("seq_num: " + seq_num);
-      System.out.println("seq_num_2: " + seq_num_2);
       System.out.println("ack_num: " + ack_num);
    }
 
@@ -70,23 +64,24 @@ public class Receiver {
     
     System.out.println("Started");   
 
+    int expectedSeqNum = 1;
+
+
     while(true) { 
       byte[] buffer = new byte[576]; 
       DatagramPacket rpack = new DatagramPacket(buffer, buffer.length);
+
+      
       dsock.receive(rpack);
       byte[] packet = rpack.getData();
       System.out.println(packet.length);
       decodeHeader(packet);
       System.out.println(seq_num);
-      // System.out.println("Received " + dpack.getPort() + ": " + dpack.getData());   
       byte[] data = rpack.getData(); 
       int packSize = rpack.getLength(); 
       InetAddress remote_addr = InetAddress.getByName(remote_ip);
       DatagramPacket spack = new DatagramPacket(data, data.length, remote_addr, remote_port); 
-      // System.out.println(remote_port);
       String s2 = new String(data, 0, packSize);   
-      // System.out.println( new Date( ) + " " + dpack.getAddress( ) + " : " + Integer.parseInt(args[1]) + " "+ s2); 
-      // byte[] data = {(byte)1};
       spack.setData("hello!".getBytes());
       System.out.println("sent data");
       dsock.send(spack); 
