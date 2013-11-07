@@ -34,12 +34,12 @@ static int intFromByteArray(byte[] bytes) {
      return ByteBuffer.wrap(bytes).getInt();
 }
 
-public static byte[] init(int sPort, int dPort){
+public static byte[] makeHeader(int sPort, int dPort, int seq_num){
   byte[] header = new byte[20];
 
   byte[] sourcePort = convertToTwoBytes(sPort);
   byte[] destinationPort = convertToTwoBytes(dPort);
-  byte[] sequenceNumber = convertToFourBytes(111111);
+  byte[] sequenceNumber = convertToFourBytes(seq_num);
   byte[] ack = convertToFourBytes(123456);
   byte[] flags = convertToTwoBytes(1);
   byte[] recWindow = convertToTwoBytes(1);
@@ -62,7 +62,7 @@ public static byte[] init(int sPort, int dPort){
   for (int i = 0; i < 4; i++){
     hopefullyS[i] = header[i+4];
   }
-  
+
   for (int i = 0; i < 2; i++){
     hopefullyPort1[i] = header[i];
   }
@@ -101,13 +101,15 @@ public static void main( String args[] ) throws Exception {
   String log_filename = args[5];
 
 
-  byte[] header = init(1000, remote_port); // get things from string args
 
   int timeout = 50; // milliseconds
   int base = 1; 
   int nextseqnum = 1;
 
+
+
   BufferedReader br = null;
+
   // try {
 
   //   String line;
@@ -128,20 +130,31 @@ public static void main( String args[] ) throws Exception {
   String message1 = "DATA FOR SERVER"; 
   byte[] data = message1.getBytes(); 
 
-  DatagramPacket dpack = new DatagramPacket(data, data.length, remote_addr, remote_port); 
+
   while(true){
+    byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
+    System.out.println("header length:" + header.length);
+
    // System.out.println("Sending the packet "); 
    // dpack = new DatagramPacket(arr, arr.length, add, Integer.parseInt(args[0]));
-   System.out.println("Sending the packet to " + remote_addr + ":" + dpack.getPort());
-   dsock.send(dpack); // send the packet 
-   Date sendTime = new Date( ); // note the time of sending the message   
+   // System.out.println("Sending the packet to " + remote_addr + ":" + dpack.getPort());
+    DatagramPacket dpack = new DatagramPacket(header, header.length, remote_addr, remote_port); 
 
-   dsock.receive(dpack); // receive the packet 
-   String message2 = new String(dpack.getData()); 
-   System.out.println(message2);
-   Date receiveTime = new Date( ); // note the time of receiving the message 
-   System.out.println((receiveTime.getTime( ) - sendTime.getTime( )) + " milliseconds echo time for " + message2); 
-   Thread.sleep(1000);
+    System.out.println("data length:" + dpack.getLength());
+
+    dsock.send(dpack); // send the packet 
+    nextseqnum++;
+    System.out.println("nextseqnum: " + nextseqnum);
+
+    Date sendTime = new Date(); // note the time of sending the message   
+
+    dsock.receive(dpack); // receive the ack
+
+    // String message2 = new String(dpack.getData()); 
+    // System.out.println(message2);
+    Date receiveTime = new Date( ); // note the time of receiving the message 
+    // System.out.println((receiveTime.getTime( ) - sendTime.getTime( )) + " milliseconds echo time for " + message2); 
+    Thread.sleep(2000);
   } 
  } 
 } 
