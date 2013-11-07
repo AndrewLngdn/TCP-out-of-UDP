@@ -65,14 +65,6 @@ public static void main( String args[] ) throws Exception {
   header = concat(header, urgent);
   System.out.println(header.length);
 
-  // header[0] = port1[0];
-  // header[1] = port1[1];
-
-  // header[2] = port2[0];
-  // header[3] = port2[1];
-
-
-
   // byte[] bothTogether = concat(port1, port2);
   byte[] hopefullyPort1 = new byte[2];
   byte[] hopefullyPort2 = new byte[2];

@@ -1,6 +1,8 @@
 import java.net.*; 
 import java.util.*;   
 public class ServerEcho { 
+
+
  public static void main( String args[]) throws Exception { 
   DatagramSocket dsock = new DatagramSocket(Integer.parseInt(args[0])); 
   System.out.println("Starting server " + dsock.getPort());   
@@ -10,7 +12,7 @@ public class ServerEcho {
   while(true) { 
    dsock.receive(dpack);
    System.out.println("Received " + dpack.getPort() + ": " + new String(dpack.getData()));   
-   byte arr2[] = dpack.getData(); 
+   byte[] data = dpack.getData(); 
    int packSize = dpack.getLength(); 
    dpack.setPort(Integer.parseInt(args[1]));
    String s2 = new String(arr2, 0, packSize);   
