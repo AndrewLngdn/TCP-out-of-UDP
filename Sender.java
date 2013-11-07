@@ -1,8 +1,9 @@
 import java.net.*; 
 import java.util.*;  
 import java.nio.*;
+import java.io.*;
 
-public class EchoClient { 
+public class Sender { 
 
 public static byte[] convertToFourBytes(int value) {
     byte[] r = new byte[4];
@@ -17,14 +18,6 @@ public static byte[] convertToTwoBytes(int i){
   byte[] result = new byte[2];
   result[0] = (byte) (i >> 8);
   result[1] = (byte) (i /*>> 0*/);
-  // System.out.println("-------");
-  // System.out.println(i);
-  // System.out.println(result[1]);
-  // System.out.println(result[0]);
-  // System.out.println("-----");
-  // System.out.println(fromByteArray(result));
-  // System.out.println("-------");
-  // System.out.println(bb.getInt());
   return result;
 }
 
@@ -41,11 +34,11 @@ static int intFromByteArray(byte[] bytes) {
      return ByteBuffer.wrap(bytes).getInt();
 }
 
-public static byte[] init(){
+public static byte[] init(int sPort, int dPort){
   byte[] header = new byte[20];
 
-  byte[] port1 = convertToTwoBytes(5555);
-  byte[] port2 = convertToTwoBytes(4000);
+  byte[] sourcePort = convertToTwoBytes(sPort);
+  byte[] destinationPort = convertToTwoBytes(dPort);
   byte[] sequenceNumber = convertToFourBytes(111111);
   byte[] ack = convertToFourBytes(123456);
   byte[] flags = convertToTwoBytes(1);
@@ -53,7 +46,7 @@ public static byte[] init(){
   byte[] checksum = convertToTwoBytes(1);
   byte[] urgent = convertToTwoBytes(1);
 
-  header = concat(port1, port2);
+  header = concat(sourcePort, destinationPort);
   header = concat(header, sequenceNumber);
   header = concat(header, ack);
   header = concat(header, flags);
@@ -69,6 +62,7 @@ public static byte[] init(){
   for (int i = 0; i < 4; i++){
     hopefullyS[i] = header[i+4];
   }
+  
   for (int i = 0; i < 2; i++){
     hopefullyPort1[i] = header[i];
   }
@@ -77,10 +71,10 @@ public static byte[] init(){
     hopefullyPort2[i] = header[i+2];
   }
 
-  System.out.println(shortFromByteArray(port1));
+  System.out.println(shortFromByteArray(sourcePort));
   System.out.println(shortFromByteArray(hopefullyPort1));
   System.out.println("----");
-  System.out.println(shortFromByteArray(port2));
+  System.out.println(shortFromByteArray(destinationPort));
   System.out.println(shortFromByteArray(hopefullyPort2));
   System.out.println("----");
   System.out.println(intFromByteArray(sequenceNumber));
@@ -92,42 +86,62 @@ public static byte[] init(){
 public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
 
 public static void main( String args[] ) throws Exception { 
- 
-  init(); // get things from string args
+   
+
+  if (args.length != 6){
+    System.out.println("java Sender [filename] [remote_IP] [remote_port] [ack_port_number] [window_size] [log_filename]");
+    System.exit(1);
+  } 
+
+  String filename = args[0];
+  String remote_ip = args[1];
+  int remote_port = Integer.parseInt(args[2]);
+  int ack_port = Integer.parseInt(args[3]);
+  int window_size = Integer.parseInt(args[4]); // packets
+  String log_filename = args[5];
+
+
+  byte[] header = init(1000, remote_port); // get things from string args
 
   int timeout = 50; // milliseconds
-  int windowSize = 1; // packets
   int base = 1; 
   int nextseqnum = 1;
 
+  BufferedReader br = null;
+  // try {
 
+  //   String line;
+  //   br = new BufferedReader(new FileReader(filename));
 
+  //   while ((line = br.readLine()) != null) {
+  //     System.out.println(line);
+  //   }
 
+  // } catch (IOException e) {
+  //   e.printStackTrace();
+  // }
 
-
-
-
-
-  // InetAddress add = InetAddress.getByName("localhost");   
+  InetAddress remote_addr = InetAddress.getByName(remote_ip);   
   // System.out.println("Starting the client "+args[0] + "," + args[1]); 
-  // DatagramSocket dsock = new DatagramSocket(Integer.parseInt(args[1])); 
-  // System.out.println("Client socket = " + dsock.getPort()); 
-  // // String message1 = "This is client calling"; 
-  // byte arr[] = message1.getBytes( ); 
-  // // byte header[] = 
-  // DatagramPacket dpack = new DatagramPacket(arr, arr.length, add, Integer.parseInt(args[0])); 
-  // while(true){
-  //  // System.out.println("Sending the packet "); 
-  //  dpack = new DatagramPacket(arr, arr.length, add, Integer.parseInt(args[0]));
-  //  System.out.println("Sending the packet to " + dpack.getPort());
-  //  dsock.send(dpack); // send the packet 
-  //  Date sendTime = new Date( ); // note the time of sending the message   
-  //  dsock.receive(dpack); // receive the packet 
-  //  String message2 = new String(dpack.getData()); 
-  //  System.out.println(message2);
-  //  Date receiveTime = new Date( ); // note the time of receiving the message 
-  //  System.out.println((receiveTime.getTime( ) - sendTime.getTime( )) + " milliseconds echo time for " + message2); 
-  //  Thread.sleep(1000);
-  // } 
+  DatagramSocket dsock = new DatagramSocket(ack_port); 
+  System.out.println("Client socket = " + dsock.getPort()); 
+  String message1 = "DATA FOR SERVER"; 
+  byte[] data = message1.getBytes(); 
+
+  DatagramPacket dpack = new DatagramPacket(data, data.length, remote_addr, remote_port); 
+  while(true){
+   // System.out.println("Sending the packet "); 
+   // dpack = new DatagramPacket(arr, arr.length, add, Integer.parseInt(args[0]));
+   System.out.println("Sending the packet to " + remote_addr + ":" + dpack.getPort());
+   dsock.send(dpack); // send the packet 
+   Date sendTime = new Date( ); // note the time of sending the message   
+
+   dsock.receive(dpack); // receive the packet 
+   String message2 = new String(dpack.getData()); 
+   System.out.println(message2);
+   Date receiveTime = new Date( ); // note the time of receiving the message 
+   System.out.println((receiveTime.getTime( ) - sendTime.getTime( )) + " milliseconds echo time for " + message2); 
+   Thread.sleep(1000);
+  } 
  } 
 } 
