@@ -15,9 +15,9 @@ public class ServerEcho {
    byte[] data = dpack.getData(); 
    int packSize = dpack.getLength(); 
    dpack.setPort(Integer.parseInt(args[1]));
-   String s2 = new String(arr2, 0, packSize);   
+   String s2 = new String(data, 0, packSize);   
    System.out.println( new Date( ) + " " + dpack.getAddress( ) + " : " + Integer.parseInt(args[1]) + " "+ s2); 
-   byte[] data = {(byte)1};
+   // byte[] data = {(byte)1};
    dpack.setData("From SERVER!!!".getBytes());
    dsock.send(dpack); 
   } 

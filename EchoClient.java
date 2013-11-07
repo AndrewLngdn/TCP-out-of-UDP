@@ -5,7 +5,6 @@ import java.nio.*;
 public class EchoClient { 
 
 public static byte[] convertToFourBytes(int value) {
-
     byte[] r = new byte[4];
     r[0] = (byte)(value >>> 24);
     r[1] = (byte)(value >>> 16);
@@ -16,7 +15,6 @@ public static byte[] convertToFourBytes(int value) {
 
 public static byte[] convertToTwoBytes(int i){
   byte[] result = new byte[2];
-
   result[0] = (byte) (i >> 8);
   result[1] = (byte) (i /*>> 0*/);
   // System.out.println("-------");
@@ -29,7 +27,6 @@ public static byte[] convertToTwoBytes(int i){
   // System.out.println(bb.getInt());
   return result;
 }
-
 
 public static byte[] concat(byte[] first, byte[] second) {
   byte[] result = Arrays.copyOf(first, first.length + second.length);
@@ -44,7 +41,7 @@ static int intFromByteArray(byte[] bytes) {
      return ByteBuffer.wrap(bytes).getInt();
 }
 
-public static void main( String args[] ) throws Exception { 
+public static byte[] init(){
   byte[] header = new byte[20];
 
   byte[] port1 = convertToTwoBytes(5555);
@@ -63,9 +60,7 @@ public static void main( String args[] ) throws Exception {
   header = concat(header, recWindow);
   header = concat(header, checksum);
   header = concat(header, urgent);
-  System.out.println(header.length);
 
-  // byte[] bothTogether = concat(port1, port2);
   byte[] hopefullyPort1 = new byte[2];
   byte[] hopefullyPort2 = new byte[2];
   byte[] hopefullyAck = new byte[4];
@@ -90,8 +85,26 @@ public static void main( String args[] ) throws Exception {
   System.out.println("----");
   System.out.println(intFromByteArray(sequenceNumber));
   System.out.println(intFromByteArray(hopefullyS));
-  // convertToBytes(10000);
-  // convertToBytes(16);
+
+  return header;
+}
+
+public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
+
+public static void main( String args[] ) throws Exception { 
+ 
+  init(); // get things from string args
+
+  int timeout = 50; // milliseconds
+  int windowSize = 1; // packets
+  int base = 1; 
+  int nextseqnum = 1;
+
+
+
+
+
+
 
 
 
