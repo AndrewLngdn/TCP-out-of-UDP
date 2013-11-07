@@ -9,12 +9,14 @@ public class ServerEcho {
   System.out.println("Started");   
   while(true) { 
    dsock.receive(dpack);
-   System.out.println("Received " + dpack.getPort());   
+   System.out.println("Received " + dpack.getPort() + ": " + new String(dpack.getData()));   
    byte arr2[] = dpack.getData(); 
    int packSize = dpack.getLength(); 
    dpack.setPort(Integer.parseInt(args[1]));
    String s2 = new String(arr2, 0, packSize);   
    System.out.println( new Date( ) + " " + dpack.getAddress( ) + " : " + Integer.parseInt(args[1]) + " "+ s2); 
+   byte[] data = {(byte)1};
+   dpack.setData("From SERVER!!!".getBytes());
    dsock.send(dpack); 
   } 
  } 
