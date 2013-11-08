@@ -35,7 +35,6 @@ public class Sender implements Runnable {
   }
 
   public static void decodeHeader(byte[] packet){
-    System.out.println("decoding header");
 
     byte[] header = Arrays.copyOfRange(packet, 0, 20);
     byte[] source_port_a = Arrays.copyOfRange(header, 0, 2);
@@ -50,8 +49,6 @@ public class Sender implements Runnable {
 
     received_ack = intFromByteArray(ack_num_a);
     int seq = intFromByteArray(seq_num_a);
-    System.out.println("received ack   " + received_ack);
-    System.out.println("seq num   " + seq);
 
   }
 
@@ -92,6 +89,7 @@ public class Sender implements Runnable {
   public static byte[] file_bytes;
   public static DatagramSocket dsock; 
   public static InetAddress remote_addr;
+  public static int number_of_packets_needed = -1;
 
   public static void main( String args[] ) throws Exception { 
 
@@ -116,14 +114,16 @@ public class Sender implements Runnable {
     File file = new File(filename);
     file_bytes = new byte[(int)file.length()];
 
+
+    // int numberOfPacketsNeeded = -1; 
     try {
 
       fileInputStream = new FileInputStream(file);
       fileInputStream.read(file_bytes);
       fileInputStream.close();
 
-      int numberOfPacketsNeeded = file_bytes.length/576 + 1;
-      System.out.println(numberOfPacketsNeeded);
+      number_of_packets_needed = file_bytes.length/576 + 1;
+      System.out.println(number_of_packets_needed);
 
       // byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
 
@@ -153,8 +153,11 @@ public class Sender implements Runnable {
         decodeHeader(dpack.getData());
 
         base = received_ack + 1; 
-
-        System.out.println("recieved packet: " + dpack.getData());
+        System.out.println("received ack for " + received_ack);
+        if (received_ack == number_of_packets_needed){
+          System.out.println("got all the packets");
+          System.exit(0);
+        }
       }
 
     } catch (Exception e){
@@ -166,17 +169,18 @@ public class Sender implements Runnable {
   // make & send packets here
 
   public static byte[] make_pkt(int nextseqnum, byte[] file_bytes, int ack_port, int remote_port){
+
+
     byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
     int data_start = nextseqnum * 556;
     int data_end = Math.min((nextseqnum + 1)*556 + 1, file_bytes.length);
 
-    if (data_start > data_end){
-      System.out.println("finished sending");
-      System.exit(0);
-    }
+    System.out.println("-----------------");
+    System.out.println("making packet " + nextseqnum);
+    System.out.println("start " + data_start);
+    System.out.println("end " + data_end);
 
     byte[] packet_data = Arrays.copyOfRange(file_bytes, data_start, data_end);
-    // System.out.println(packet_data.length);
     byte[] packet = concat(header, packet_data);
     packets.add(packet);
 
@@ -192,7 +196,8 @@ public class Sender implements Runnable {
             long elapsedTime = (new Date()).getTime() - timer;
             if (elapsedTime > 3000){
               timer = (new Date()).getTime();
-              for (int i = 0; i < packets.size(); i++){
+              for (int i = base; i < packets.size(); i++){
+                System.out.println("resending packet " + i);
                 byte[] packet = packets.get(i);
                 DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
                 dsock.send(dpack);
@@ -200,18 +205,17 @@ public class Sender implements Runnable {
               System.out.println("elapsed Time is too long");
             }
 
-          if (nextseqnum < base+window_size){
-          
+          if (nextseqnum < base+window_size && nextseqnum <= number_of_packets_needed){
             // make packet here
             byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
 
             DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
 
             dsock.send(dpack); // send the packet 
-            System.out.println("nextseqnum: " + nextseqnum);
+
             Date sendTime = new Date(); // note the time of sending the message   
             Date receiveTime = new Date( ); // note the time of receiving the message 
-            Thread.sleep(1000);
+            // Thread.sleep(1000);
 
             // make/send packet
             if (base == nextseqnum){

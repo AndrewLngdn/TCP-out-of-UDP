@@ -109,31 +109,37 @@ public class Receiver {
 
     int expected_seq_num = 0;
 
+    int count = 0;
+
     while(true) { 
       byte[] buffer = new byte[576]; 
       DatagramPacket rpack = new DatagramPacket(buffer, buffer.length);
 
+
       dsock.receive(rpack);  // need checksum
+      System.out.println(new String(rpack.getData()));
+
       byte[] packet = rpack.getData();
-      System.out.println(packet.length);
+      System.out.println("----------------");
       decodeHeader(packet);
       Random r = new Random();
       int rand = r.nextInt();
+      System.out.println(count++);
 
       if (seq_num == expected_seq_num && rand%4 != 0){ // also do checksum
         System.out.println("got expected packet");
+        System.out.println("sending ack for " + expected_seq_num);
         //send ack
-        byte[] ack_pack_data = makeHeader(listening_port, remote_port, seq_num); 
+        byte[] ack_pack_data = makeHeader(listening_port, remote_port, expected_seq_num); 
         
         expected_seq_num++;
         InetAddress remote_addr = InetAddress.getByName(remote_ip);
-        
         DatagramPacket spack = new DatagramPacket(ack_pack_data, ack_pack_data.length, remote_addr, remote_port); 
-        // spack.setData("hello!".getBytes());
         dsock.send(spack); 
       } else {
         System.out.println("dropping ack");
       }
+      System.out.println("----------------");
     } 
   } 
 }
