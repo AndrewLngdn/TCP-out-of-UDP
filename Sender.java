@@ -49,7 +49,9 @@ public class Sender implements Runnable {
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
     received_ack = intFromByteArray(ack_num_a);
+    int seq = intFromByteArray(seq_num_a);
     System.out.println("received ack   " + received_ack);
+    System.out.println("seq num   " + seq);
 
   }
 
@@ -77,8 +79,8 @@ public class Sender implements Runnable {
   }
 
   public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
-  public static int nextseqnum = 1;
-  public static int base = 1;
+  public static int nextseqnum = 0;
+  public static int base = 0;
   public static int timeout = 50;
   public static String filename;
   public static String remote_ip;
@@ -87,9 +89,9 @@ public class Sender implements Runnable {
   public static int window_size = 1;
   public static String log_filename;
   public static int received_ack = 0;
-
+  public static byte[] file_bytes;
   public static DatagramSocket dsock; 
-
+  public static InetAddress remote_addr;
 
   public static void main( String args[] ) throws Exception { 
 
@@ -106,21 +108,30 @@ public class Sender implements Runnable {
     ack_port = Integer.parseInt(args[3]);
     window_size = Integer.parseInt(args[4]); // packets
     log_filename = args[5];
+    remote_addr = InetAddress.getByName(remote_ip); 
 
+
+    ///// make packets here!
     FileInputStream fileInputStream = null;
-
     File file = new File(filename);
-
-    byte[] file_bytes = new byte[(int)file.length()];
+    file_bytes = new byte[(int)file.length()];
 
     try {
 
       fileInputStream = new FileInputStream(file);
       fileInputStream.read(file_bytes);
       fileInputStream.close();
-      for (int i = 0; i < file_bytes.length/556 + 1; i++){
-        System.out.println("needs " + i + "packets");
-      }
+
+      int numberOfPacketsNeeded = file_bytes.length/576 + 1;
+      System.out.println(numberOfPacketsNeeded);
+
+      // byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
+
+      // for (int i = 0; i < numberOfPacketsNeeded; i++){
+      //   packets.add(make_pkt(i,file_bytes, ack_port, remote_port));
+      // }
+      // System.out.println(packets.size());
+
 
     } catch (IOException e) {
       e.printStackTrace();
@@ -128,6 +139,7 @@ public class Sender implements Runnable {
 
     // loop 1 
     try {
+
       dsock = new DatagramSocket(ack_port);
       new Thread(new Sender()).start();
 
@@ -140,10 +152,9 @@ public class Sender implements Runnable {
         dsock.receive(dpack); // receive the ack
         decodeHeader(dpack.getData());
 
-        base = received_ack + 1; // base = getacknum(recpck)+1
+        base = received_ack + 1; 
 
         System.out.println("recieved packet: " + dpack.getData());
-        //wait for acks
       }
 
     } catch (Exception e){
@@ -154,34 +165,57 @@ public class Sender implements Runnable {
 
   // make & send packets here
 
+  public static byte[] make_pkt(int nextseqnum, byte[] file_bytes, int ack_port, int remote_port){
+    byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
+    int data_start = nextseqnum * 556;
+    int data_end = Math.min((nextseqnum + 1)*556 + 1, file_bytes.length);
+
+    if (data_start > data_end){
+      System.out.println("finished sending");
+      System.exit(0);
+    }
+
+    byte[] packet_data = Arrays.copyOfRange(file_bytes, data_start, data_end);
+    // System.out.println(packet_data.length);
+    byte[] packet = concat(header, packet_data);
+    packets.add(packet);
+
+    return packet;
+  }
+
   public static long timer;
   public void run(){
       try {
         while(true){
 
-          //check for timeout
+          // check for timeout
             long elapsedTime = (new Date()).getTime() - timer;
-            if (elapsedTime < 1000){
+            if (elapsedTime > 3000){
+              timer = (new Date()).getTime();
+              for (int i = 0; i < packets.size(); i++){
+                byte[] packet = packets.get(i);
+                DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
+                dsock.send(dpack);
+              }
               System.out.println("elapsed Time is too long");
             }
 
           if (nextseqnum < base+window_size){
-            InetAddress remote_addr = InetAddress.getByName(remote_ip);   
           
-            byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
+            // make packet here
+            byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
 
-            DatagramPacket dpack = new DatagramPacket(header, header.length, remote_addr, remote_port); 
+            DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
 
             dsock.send(dpack); // send the packet 
             System.out.println("nextseqnum: " + nextseqnum);
-
             Date sendTime = new Date(); // note the time of sending the message   
-
             Date receiveTime = new Date( ); // note the time of receiving the message 
-            Thread.sleep(2000);
+            Thread.sleep(1000);
 
             // make/send packet
             if (base == nextseqnum){
+              System.out.println("setting timer");
               //start_timer
               timer = (new Date()).getTime();
             }
@@ -191,7 +225,8 @@ public class Sender implements Runnable {
         }
         
       } catch (Exception e){
-        System.err.println("ex: " + e);
+        System.err.println("Eception: ");
+        e.printStackTrace();
       }
 
   }

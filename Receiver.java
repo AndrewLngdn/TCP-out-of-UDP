@@ -84,6 +84,7 @@ public class Receiver {
     ack_num = intFromByteArray(ack_num_a);
 
     System.out.println("seq_num: " + seq_num);
+    System.out.println("source port: " + source_port);
     System.out.println("ack_num: " + ack_num);
   }
 
@@ -96,7 +97,6 @@ public class Receiver {
       System.exit(1);
     }
 
-
     String filename = args[0];
     int listening_port = Integer.parseInt(args[1]);
     String remote_ip = args[2];
@@ -105,11 +105,9 @@ public class Receiver {
 
     DatagramSocket dsock = new DatagramSocket(listening_port); 
     System.out.println("Starting server " + dsock.getPort());   
-
     System.out.println("Started");   
 
-    int expected_seq_num = 1;
-
+    int expected_seq_num = 0;
 
     while(true) { 
       byte[] buffer = new byte[576]; 
@@ -117,9 +115,12 @@ public class Receiver {
 
       dsock.receive(rpack);  // need checksum
       byte[] packet = rpack.getData();
+      System.out.println(packet.length);
       decodeHeader(packet);
+      Random r = new Random();
+      int rand = r.nextInt();
 
-      if (seq_num == expected_seq_num){ // also do checksum
+      if (seq_num == expected_seq_num && rand%4 != 0){ // also do checksum
         System.out.println("got expected packet");
         //send ack
         byte[] ack_pack_data = makeHeader(listening_port, remote_port, seq_num); 
@@ -130,6 +131,8 @@ public class Receiver {
         DatagramPacket spack = new DatagramPacket(ack_pack_data, ack_pack_data.length, remote_addr, remote_port); 
         // spack.setData("hello!".getBytes());
         dsock.send(spack); 
+      } else {
+        System.out.println("dropping ack");
       }
     } 
   } 
