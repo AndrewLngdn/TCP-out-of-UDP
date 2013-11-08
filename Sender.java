@@ -5,174 +5,172 @@ import java.io.*;
 
 public class Sender implements Runnable { 
 
-public static byte[] convertToFourBytes(int value) {
-    byte[] r = new byte[4];
-    r[0] = (byte)(value >>> 24);
-    r[1] = (byte)(value >>> 16);
-    r[2] = (byte)(value >>> 8);
-    r[3] = (byte)value;
-    return r;
-}
-
-public static byte[] convertToTwoBytes(int i){
-  byte[] result = new byte[2];
-  result[0] = (byte) (i >> 8);
-  result[1] = (byte) (i /*>> 0*/);
-  return result;
-}
-
-public static byte[] concat(byte[] first, byte[] second) {
-  byte[] result = Arrays.copyOf(first, first.length + second.length);
-  System.arraycopy(second, 0, result, first.length, second.length);
-  return result;
-}
-
-static short shortFromByteArray(byte[] bytes) {
-     return ByteBuffer.wrap(bytes).getShort();
-}
-static int intFromByteArray(byte[] bytes) {
-     return ByteBuffer.wrap(bytes).getInt();
-}
-
-public static byte[] makeHeader(int sPort, int dPort, int seq_num){
-  byte[] header = new byte[20];
-
-  byte[] sourcePort = convertToTwoBytes(sPort);
-  byte[] destinationPort = convertToTwoBytes(dPort);
-  byte[] sequenceNumber = convertToFourBytes(seq_num);
-  byte[] ack = convertToFourBytes(123456);
-  byte[] flags = convertToTwoBytes(1);
-  byte[] recWindow = convertToTwoBytes(1);
-  byte[] checksum = convertToTwoBytes(1);
-  byte[] urgent = convertToTwoBytes(1);
-
-  header = concat(sourcePort, destinationPort);
-  header = concat(header, sequenceNumber);
-  header = concat(header, ack);
-  header = concat(header, flags);
-  header = concat(header, recWindow);
-  header = concat(header, checksum);
-  header = concat(header, urgent);
-
-  byte[] hopefullyPort1 = new byte[2];
-  byte[] hopefullyPort2 = new byte[2];
-  byte[] hopefullyAck = new byte[4];
-  byte[] hopefullyS = new byte[4];
-
-  for (int i = 0; i < 4; i++){
-    hopefullyS[i] = header[i+4];
+  public static byte[] convertToFourBytes(int value) {
+      byte[] r = new byte[4];
+      r[0] = (byte)(value >>> 24);
+      r[1] = (byte)(value >>> 16);
+      r[2] = (byte)(value >>> 8);
+      r[3] = (byte)value;
+      return r;
   }
 
-  for (int i = 0; i < 2; i++){
-    hopefullyPort1[i] = header[i];
+  public static byte[] convertToTwoBytes(int i){
+    byte[] result = new byte[2];
+    result[0] = (byte) (i >> 8);
+    result[1] = (byte) (i /*>> 0*/);
+    return result;
   }
 
-  for (int i = 0; i < 2; i++){
-    hopefullyPort2[i] = header[i+2];
+  public static byte[] concat(byte[] first, byte[] second) {
+    byte[] result = Arrays.copyOf(first, first.length + second.length);
+    System.arraycopy(second, 0, result, first.length, second.length);
+    return result;
   }
 
-  System.out.println(shortFromByteArray(sourcePort));
-  System.out.println(shortFromByteArray(hopefullyPort1));
-  System.out.println("----");
-  System.out.println(shortFromByteArray(destinationPort));
-  System.out.println(shortFromByteArray(hopefullyPort2));
-  System.out.println("----");
-  System.out.println(intFromByteArray(sequenceNumber));
-  System.out.println(intFromByteArray(hopefullyS));
+  static short shortFromByteArray(byte[] bytes) {
+       return ByteBuffer.wrap(bytes).getShort();
+  }
+  static int intFromByteArray(byte[] bytes) {
+       return ByteBuffer.wrap(bytes).getInt();
+  }
 
-  return header;
-}
+  public static void decodeHeader(byte[] packet){
+    System.out.println("decoding header");
 
-public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
-public static int nextseqnum = 1;
-public static int base = 1;
-public static int timeout = 50;
-public static String filename;
-public static String remote_ip;
-public static int remote_port;
-public static int ack_port;
-public static int window_size = 1;
-public static String log_filename;
+    byte[] header = Arrays.copyOfRange(packet, 0, 20);
+    byte[] source_port_a = Arrays.copyOfRange(header, 0, 2);
+    byte[] dest_port_a = Arrays.copyOfRange(header, 2, 4);
+    byte[] seq_num_a = Arrays.copyOfRange(header, 4, 8);
+    byte[] ack_num_a = Arrays.copyOfRange(header, 8, 12);
+    byte[] header_len = Arrays.copyOfRange(header, 12, 13); // always 20
+    byte[] flags = Arrays.copyOfRange(header, 13, 14);
+    byte[] rec_window = Arrays.copyOfRange(header, 14, 16);
+    byte[] chksum = Arrays.copyOfRange(header, 16, 18);
+    byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-public static DatagramSocket dsock; 
+    received_ack = intFromByteArray(ack_num_a);
+    System.out.println("received ack   " + received_ack);
+
+  }
+
+  public static byte[] makeHeader(int sPort, int dPort, int seq_num){
+    byte[] header = new byte[20];
+
+    byte[] sourcePort = convertToTwoBytes(sPort);
+    byte[] destinationPort = convertToTwoBytes(dPort);
+    byte[] sequenceNumber = convertToFourBytes(seq_num);
+    byte[] ack = convertToFourBytes(123456);
+    byte[] flags = convertToTwoBytes(1);
+    byte[] recWindow = convertToTwoBytes(1);
+    byte[] checksum = convertToTwoBytes(1);
+    byte[] urgent = convertToTwoBytes(1);
+
+    header = concat(sourcePort, destinationPort);
+    header = concat(header, sequenceNumber);
+    header = concat(header, ack);
+    header = concat(header, flags);
+    header = concat(header, recWindow);
+    header = concat(header, checksum);
+    header = concat(header, urgent);
+
+    return header;
+  }
+
+  public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
+  public static int nextseqnum = 1;
+  public static int base = 1;
+  public static int timeout = 50;
+  public static String filename;
+  public static String remote_ip;
+  public static int remote_port;
+  public static int ack_port;
+  public static int window_size = 1;
+  public static String log_filename;
+  public static int received_ack = 0;
+
+  public static DatagramSocket dsock; 
 
 
-public static void main( String args[] ) throws Exception { 
+  public static void main( String args[] ) throws Exception { 
 
-  boolean execute = true;
+    boolean execute = true;
 
-  if (args.length != 6){
-    System.out.println("java Sender [filename] [remote_IP] [remote_port] [ack_port_number] [window_size] [log_filename]");
-    System.exit(1);
-  } 
+    if (args.length != 6){
+      System.out.println("java Sender [filename] [remote_IP] [remote_port] [ack_port_number] [window_size] [log_filename]");
+      System.exit(1);
+    } 
 
-  filename = args[0];
-  remote_ip = args[1];
-  remote_port = Integer.parseInt(args[2]);
-  ack_port = Integer.parseInt(args[3]);
-  window_size = Integer.parseInt(args[4]); // packets
-  log_filename = args[5];
+    filename = args[0];
+    remote_ip = args[1];
+    remote_port = Integer.parseInt(args[2]);
+    ack_port = Integer.parseInt(args[3]);
+    window_size = Integer.parseInt(args[4]); // packets
+    log_filename = args[5];
 
-  BufferedReader br = null;
+    FileInputStream fileInputStream = null;
 
-  // try {
+    File file = new File(filename);
 
-  //   String line;
-  //   br = new BufferedReader(new FileReader(filename));
+    byte[] file_bytes = new byte[(int)file.length()];
 
-  //   while ((line = br.readLine()) != null) {
-  //     System.out.println(line);
-  //   }
+    try {
 
-  // } catch (IOException e) {
-  //   e.printStackTrace();
-  // }
+      fileInputStream = new FileInputStream(file);
+      fileInputStream.read(file_bytes);
+      fileInputStream.close();
+      for (int i = 0; i < file_bytes.length/556 + 1; i++){
+        System.out.println("needs " + i + "packets");
+      }
 
-  // loop 1 
-  try {
-    dsock = new DatagramSocket(ack_port);
-    new Thread(new Sender()).start();
-
-    // listen for acks
-    while (execute){
-      byte[] buffer = new byte[576];
-
-      DatagramPacket dpack = new DatagramPacket(buffer, buffer.length);
-
-      dsock.receive(dpack); // receive the ack
-      base++; // base = getacknum(recpck)+1
-
-      System.out.println("recieved packet: " + dpack.getData());
-      //wait for acks
+    } catch (IOException e) {
+      e.printStackTrace();
     }
 
-  } catch (Exception e){
-    System.err.println("IOEx: " + e);
-  }
+    // loop 1 
+    try {
+      dsock = new DatagramSocket(ack_port);
+      new Thread(new Sender()).start();
 
+      // listen for acks
+      while (execute){
+        byte[] buffer = new byte[576];
 
+        DatagramPacket dpack = new DatagramPacket(buffer, buffer.length);
 
+        dsock.receive(dpack); // receive the ack
+        decodeHeader(dpack.getData());
 
+        base = received_ack + 1; // base = getacknum(recpck)+1
 
+        System.out.println("recieved packet: " + dpack.getData());
+        //wait for acks
+      }
 
-
-  
- } 
+    } catch (Exception e){
+      System.err.println("IOEx: " + e);
+    }
+    
+  } 
 
   // make & send packets here
 
+  public static long timer;
   public void run(){
       try {
         while(true){
+
+          //check for timeout
+            long elapsedTime = (new Date()).getTime() - timer;
+            if (elapsedTime < 1000){
+              System.out.println("elapsed Time is too long");
+            }
+
           if (nextseqnum < base+window_size){
             InetAddress remote_addr = InetAddress.getByName(remote_ip);   
           
             byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
-            System.out.println("header length:" + header.length);
 
             DatagramPacket dpack = new DatagramPacket(header, header.length, remote_addr, remote_port); 
-
-            System.out.println("data length:" + dpack.getLength());
 
             dsock.send(dpack); // send the packet 
             System.out.println("nextseqnum: " + nextseqnum);
@@ -185,6 +183,7 @@ public static void main( String args[] ) throws Exception {
             // make/send packet
             if (base == nextseqnum){
               //start_timer
+              timer = (new Date()).getTime();
             }
 
             nextseqnum++;
