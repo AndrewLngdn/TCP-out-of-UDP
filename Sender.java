@@ -2,9 +2,12 @@ import java.net.*;
 import java.util.*;  
 import java.nio.*;
 import java.io.*;
+import java.security.*;
+
 
 public class Sender implements Runnable { 
 
+  // ints to four bytes
   public static byte[] convertToFourBytes(int value) {
       byte[] r = new byte[4];
       r[0] = (byte)(value >>> 24);
@@ -14,6 +17,7 @@ public class Sender implements Runnable {
       return r;
   }
 
+  //ints to two bytes
   public static byte[] convertToTwoBytes(int i){
     byte[] result = new byte[2];
     result[0] = (byte) (i >> 8);
@@ -21,19 +25,19 @@ public class Sender implements Runnable {
     return result;
   }
 
+  // used to put together byte arrays
   public static byte[] concat(byte[] first, byte[] second) {
     byte[] result = Arrays.copyOf(first, first.length + second.length);
     System.arraycopy(second, 0, result, first.length, second.length);
     return result;
   }
 
-  static short shortFromByteArray(byte[] bytes) {
-       return ByteBuffer.wrap(bytes).getShort();
-  }
+  // get an int from a byte array
   static int intFromByteArray(byte[] bytes) {
        return ByteBuffer.wrap(bytes).getInt();
   }
 
+  // used to decode the ack header
   public static void decodeHeader(byte[] packet){
 
     byte[] header = Arrays.copyOfRange(packet, 0, 20);
@@ -52,16 +56,24 @@ public class Sender implements Runnable {
 
   }
 
-  public static byte[] makeHeader(int sPort, int dPort, int seq_num){
+
+  //used to make the packet header
+  public static byte[] makeHeader(int sPort, int dPort, int seq_num, boolean fin, byte[] checksum){
     byte[] header = new byte[20];
 
     byte[] sourcePort = convertToTwoBytes(sPort);
     byte[] destinationPort = convertToTwoBytes(dPort);
     byte[] sequenceNumber = convertToFourBytes(seq_num);
     byte[] ack = convertToFourBytes(123456);
-    byte[] flags = convertToTwoBytes(1);
+    byte[] flags; 
+
+    if (fin){
+      flags = convertToTwoBytes(1);
+    } else {
+      flags = convertToTwoBytes(0);
+    }
+
     byte[] recWindow = convertToTwoBytes(1);
-    byte[] checksum = convertToTwoBytes(1);
     byte[] urgent = convertToTwoBytes(1);
 
     header = concat(sourcePort, destinationPort);
@@ -75,25 +87,25 @@ public class Sender implements Runnable {
     return header;
   }
 
-  public static ArrayList<byte[]> packets = new ArrayList<byte[]>();
-  public static int nextseqnum = 0;
-  public static int base = 0;
-  public static int timeout = 50;
-  public static String filename;
-  public static String remote_ip;
-  public static int remote_port;
-  public static int ack_port;
-  public static int window_size = 1;
-  public static String log_filename;
-  public static int received_ack = 0;
-  public static byte[] file_bytes;
-  public static DatagramSocket dsock; 
+  // all the stuff about the packet
+  public static ArrayList<byte[]> packets = new ArrayList<byte[]>(); // holds packets for resending
+  public static int nextseqnum = 0;     // sequence numbers start at 0
+  public static int base = 0;           // base of window
+  public static int timeout = 50;       // timout
+  public static String filename;        // file to send out
+  public static String remote_ip;       // remote host
+  public static int remote_port;        // port to send data to
+  public static int ack_port;           // port to recieve udp acks
+  public static int window_size;        // 
+  public static String log_filename;    // name of log to write to
+  public static int received_ack = 0;   // latest received ack
+  public static byte[] file_bytes;      // byte array of file
+  public static DatagramSocket dsock;   // socket to send over
   public static InetAddress remote_addr;
-  public static int number_of_packets_needed = -1;
+  public static int number_of_packets_needed = -1;  // number of packets needed to send entire file
+  public static int payload_size = 576; // size of entire packet
 
   public static void main( String args[] ) throws Exception { 
-
-    boolean execute = true;
 
     if (args.length != 6){
       System.out.println("java Sender [filename] [remote_IP] [remote_port] [ack_port_number] [window_size] [log_filename]");
@@ -104,87 +116,116 @@ public class Sender implements Runnable {
     remote_ip = args[1];
     remote_port = Integer.parseInt(args[2]);
     ack_port = Integer.parseInt(args[3]);
-    window_size = Integer.parseInt(args[4]); // packets
+    window_size = Integer.parseInt(args[4]);
     log_filename = args[5];
     remote_addr = InetAddress.getByName(remote_ip); 
 
 
-    ///// make packets here!
+    // Load file as bytes
     FileInputStream fileInputStream = null;
     File file = new File(filename);
     file_bytes = new byte[(int)file.length()];
 
-
-    // int numberOfPacketsNeeded = -1; 
     try {
 
       fileInputStream = new FileInputStream(file);
       fileInputStream.read(file_bytes);
       fileInputStream.close();
 
-      number_of_packets_needed = file_bytes.length/576 + 1;
-      System.out.println(number_of_packets_needed);
-
-      // byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
-
-      // for (int i = 0; i < numberOfPacketsNeeded; i++){
-      //   packets.add(make_pkt(i,file_bytes, ack_port, remote_port));
-      // }
-      // System.out.println(packets.size());
-
+      number_of_packets_needed = file_bytes.length/(payload_size-20) + 1;
 
     } catch (IOException e) {
       e.printStackTrace();
     }
 
-    // loop 1 
+    // this block starts the ack listener thread 
+    // and also spawns off a thread for sending packets 
     try {
 
       dsock = new DatagramSocket(ack_port);
       new Thread(new Sender()).start();
 
       // listen for acks
-      while (execute){
+      while (true){
         byte[] buffer = new byte[576];
 
         DatagramPacket dpack = new DatagramPacket(buffer, buffer.length);
 
-        dsock.receive(dpack); // receive the ack
-        decodeHeader(dpack.getData());
+        dsock.receive(dpack);          // receive the ack.
+        decodeHeader(dpack.getData()); // decode the header and load the ack number
+        base = received_ack + 1;       // into recieved_ack
 
-        base = received_ack + 1; 
-        System.out.println("received ack for " + received_ack);
-        if (received_ack == number_of_packets_needed){
+        // if we get all the acks, then we're done!
+        if (received_ack == number_of_packets_needed - 1){
           System.out.println("got all the packets");
           System.exit(0);
         }
       }
 
     } catch (Exception e){
-      System.err.println("IOEx: " + e);
+      e.printStackTrace();
     }
     
   } 
 
-  // make & send packets here
-
+  // packet maker, checks the sequence number and calculates what section of the 
+  // data should be packaged and sent
   public static byte[] make_pkt(int nextseqnum, byte[] file_bytes, int ack_port, int remote_port){
-
-
-    byte[] header = makeHeader(ack_port, remote_port, nextseqnum); // get things from string args
     int data_start = nextseqnum * 556;
-    int data_end = Math.min((nextseqnum + 1)*556 + 1, file_bytes.length);
-
-    System.out.println("-----------------");
-    System.out.println("making packet " + nextseqnum);
-    System.out.println("start " + data_start);
-    System.out.println("end " + data_end);
+    int data_end = Math.min((nextseqnum + 1)*556, file_bytes.length);
 
     byte[] packet_data = Arrays.copyOfRange(file_bytes, data_start, data_end);
-    byte[] packet = concat(header, packet_data);
-    packets.add(packet);
+    byte[] packet = null;
+
+    try {
+
+      MessageDigest md = MessageDigest.getInstance("MD5");
+
+      if (packet_data.length != 556){
+
+        byte[] temp = new byte[556];
+        System.arraycopy(packet_data, 0, temp, 0, packet_data.length);
+        md.update(temp);
+
+      } else {
+        md.update(packet_data);
+      }
+
+      byte[] md5bytes = md.digest();
+      byte[] checksum = new byte[2];
+      checksum[0] = md5bytes[0];
+      checksum[1] = md5bytes[1];
+
+      // calculate checksum
+      byte[] header;
+
+      if (nextseqnum == number_of_packets_needed-1){
+        // set the fin flag if we're on the last packet
+        header = makeHeader(ack_port, remote_port, nextseqnum, true, checksum); // get things from string args
+      } else {
+        header = makeHeader(ack_port, remote_port, nextseqnum, false, checksum); // get things from string args
+      }
+
+      packet = concat(header, packet_data);   // packet = header + data
+      packets.add(packet);
+    } catch (Exception e){
+      e.printStackTrace();
+    }
 
     return packet;
+  }
+
+  public void resendPackets(){
+    try {
+      for (int i = base; i < packets.size(); i++){
+        System.out.println("resending packet " + i);
+        byte[] packet = packets.get(i);
+        DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
+        dsock.send(dpack);
+      }
+    } catch (IOException e){
+      e.printStackTrace();
+    }
   }
 
   public static long timer;
@@ -193,19 +234,16 @@ public class Sender implements Runnable {
         while(true){
 
           // check for timeout
-            long elapsedTime = (new Date()).getTime() - timer;
-            if (elapsedTime > 3000){
-              timer = (new Date()).getTime();
-              for (int i = base; i < packets.size(); i++){
-                System.out.println("resending packet " + i);
-                byte[] packet = packets.get(i);
-                DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
-                dsock.send(dpack);
-              }
-              System.out.println("elapsed Time is too long");
+            // long elapsedTime = (new Date()).getTime() - timer;
+            long elapsedTime = System.currentTimeMillis() - timer;
+
+            if (elapsedTime > timeout){
+              // timer = (new Date()).getTime();
+              timer = System.currentTimeMillis();
+              resendPackets();
             }
 
-          if (nextseqnum < base+window_size && nextseqnum <= number_of_packets_needed){
+          if (nextseqnum < base+window_size && nextseqnum < number_of_packets_needed){
             // make packet here
             byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
 
@@ -213,15 +251,9 @@ public class Sender implements Runnable {
 
             dsock.send(dpack); // send the packet 
 
-            Date sendTime = new Date(); // note the time of sending the message   
-            Date receiveTime = new Date( ); // note the time of receiving the message 
-            // Thread.sleep(1000);
-
             // make/send packet
             if (base == nextseqnum){
-              System.out.println("setting timer");
-              //start_timer
-              timer = (new Date()).getTime();
+              timer = System.currentTimeMillis();
             }
 
             nextseqnum++;
