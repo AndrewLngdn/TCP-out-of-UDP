@@ -33,12 +33,16 @@ public class Sender implements Runnable {
   }
 
   // get an int from a byte array
-  static int intFromByteArray(byte[] bytes) {
-       return ByteBuffer.wrap(bytes).getInt();
+  static Integer intFromByteArray(byte[] bytes) {
+    if (bytes.length != 4){
+      bytes = concat(new byte[2], bytes);
+    }
+    return (Integer)ByteBuffer.wrap(bytes).getInt();
   }
 
   // used to decode the ack header
-  public static void decodeHeader(byte[] packet){
+  public static Hashtable<String, Object> decodeHeader(byte[] packet){
+    Hashtable<String, Object> headerHash = new Hashtable<String, Object>(); 
 
     byte[] header = Arrays.copyOfRange(packet, 0, 20);
     byte[] source_port_a = Arrays.copyOfRange(header, 0, 2);
@@ -51,8 +55,12 @@ public class Sender implements Runnable {
     byte[] chksum = Arrays.copyOfRange(header, 16, 18);
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-    received_ack = intFromByteArray(ack_num_a);
-    int seq = intFromByteArray(seq_num_a);
+    headerHash.put("seq_num", intFromByteArray(seq_num_a));
+    headerHash.put("ack_num", intFromByteArray(ack_num_a));
+    headerHash.put("source_port", intFromByteArray(source_port_a));
+    headerHash.put("dest_port", intFromByteArray(dest_port_a));
+    headerHash.put("fin_flag", (Boolean)(flags[0] == (byte)1));
+    return headerHash;
   }
 
 
@@ -86,6 +94,8 @@ public class Sender implements Runnable {
     return header;
   }
 
+
+  // opens a file for the logger 
   public static BufferedWriter openLogFile(String filename){
     if (filename.equals("stdout")){
       return new BufferedWriter(new OutputStreamWriter(System.out));
@@ -98,7 +108,7 @@ public class Sender implements Runnable {
         file.createNewFile();
       }
  
-      FileWriter fw = new FileWriter(file.getAbsoluteFile());
+      FileWriter fw = new FileWriter(file.getAbsoluteFile(),true);
       return new BufferedWriter(fw);
 
     } catch (IOException e) {
@@ -124,6 +134,7 @@ public class Sender implements Runnable {
   public static InetAddress remote_addr;
   public static int number_of_packets_needed = -1;  // number of packets needed to send entire file
   public static int payload_size = 576; // size of entire packet
+  public static BufferedWriter bw;
 
   public static void main( String args[] ) throws Exception { 
 
@@ -137,10 +148,10 @@ public class Sender implements Runnable {
     remote_port = Integer.parseInt(args[2]);
     ack_port = Integer.parseInt(args[3]);
     window_size = Integer.parseInt(args[4]);
-    log_filename = args[5];
+    String log_filename = args[5];
     remote_addr = InetAddress.getByName(remote_ip); 
 
-    BufferedWriter bw = openLogFile(log_filename);
+    bw = openLogFile(log_filename);
 
     // Load file as bytes
     FileInputStream fileInputStream = null;
@@ -166,7 +177,6 @@ public class Sender implements Runnable {
       dsock = new DatagramSocket(ack_port);
       new Thread(new Sender()).start();
 
-
       // listen for acks
       while (true){
         byte[] buffer = new byte[576];
@@ -174,11 +184,27 @@ public class Sender implements Runnable {
         DatagramPacket dpack = new DatagramPacket(buffer, buffer.length);
 
         dsock.receive(dpack);          // receive the ack.
-        decodeHeader(dpack.getData()); // decode the header and load the ack number
+        Hashtable<String, Object> header = decodeHeader(dpack.getData()); // decode the header and load the ack number
+        Integer received_ack = (Integer) header.get("ack_num");
         base = received_ack + 1;       // into recieved_ack
+
+        Integer seq_num = (Integer) header.get("seq_num");
+        Integer source_port = (Integer) header.get("source_port");
+        Integer dest_port = (Integer) header.get("dest_port");
+        Integer ack_num = (Integer) header.get("ack_num");
+        Boolean local_fin = (Boolean)header.get("fin_flag");
+        String log_entry = "Time(ms): " + System.currentTimeMillis() + " ";
+        log_entry += "Source:" + remote_ip + ":" + source_port + " ";
+        log_entry += "Destination:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
+        log_entry += "Ack_num:" + ack_num + " ";
+        log_entry += "fin? " + local_fin + "\n";
+
+        bw.write(log_entry);
+        bw.flush();
 
         // if we get all the acks, then we're done!
         if (received_ack == number_of_packets_needed - 1){
+          bw.close();
           System.out.println("+----------------------------------<");
           System.out.println("|Delivery completed successfully!!!");
           System.out.println("|Total bytes sent = " + file_bytes.length);
@@ -246,7 +272,22 @@ public class Sender implements Runnable {
         // System.out.println("resending packet " + i);
         byte[] packet = packets.get(i);
         DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
+
         total_packets_sent++;
+        Hashtable<String, Object> header = decodeHeader(dpack.getData()); // decode the header and load the ack number
+        Integer seq_num = (Integer) header.get("seq_num");
+        Integer source_port = (Integer) header.get("source_port");
+        Integer dest_port = (Integer) header.get("dest_port");
+        Integer ack_num = (Integer) header.get("ack_num");
+        Boolean local_fin = (Boolean)header.get("fin_flag");
+        String log_entry = "Time(ms): " + System.currentTimeMillis() + " ";
+        log_entry += "Source:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
+        log_entry += "Destination:" + remote_ip + ":" + source_port + " ";
+        log_entry += "Ack_num:" + "n/a" + " ";
+        log_entry += "fin? " + local_fin + "\n";
+
+        bw.write(log_entry);
+        
         dsock.send(dpack);
       }
     } catch (IOException e){
@@ -254,9 +295,7 @@ public class Sender implements Runnable {
     }
   }
 
-
-
-  public static long timer;
+  public static long packetTimer;
   public static int total_packets_sent = 0;
   public static int resent_packet_count = 0;
   public void run(){
@@ -264,14 +303,12 @@ public class Sender implements Runnable {
       while(true){
 
         // check for timeout
-          // long elapsedTime = (new Date()).getTime() - timer;
-          long elapsedTime = System.currentTimeMillis() - timer;
+        long elapsedTime = System.currentTimeMillis() - packetTimer;
 
-          if (elapsedTime > timeout){
-            // timer = (new Date()).getTime();
-            timer = System.currentTimeMillis();
-            resendPackets();
-          }
+        if (elapsedTime > timeout){
+          packetTimer = System.currentTimeMillis();
+          resendPackets();
+        }
 
         if (nextseqnum < base+window_size && nextseqnum < number_of_packets_needed){
           // make packet here
@@ -279,11 +316,26 @@ public class Sender implements Runnable {
           DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
 
           total_packets_sent++;
+          Hashtable<String, Object> header = decodeHeader(dpack.getData()); // decode the header and load the ack number
+          Integer seq_num = (Integer) header.get("seq_num");
+          Integer source_port = (Integer) header.get("source_port");
+          Integer dest_port = (Integer) header.get("dest_port");
+          Integer ack_num = (Integer) header.get("ack_num");
+          Boolean local_fin = (Boolean)header.get("fin_flag");
+          String log_entry = "Time(ms): " + System.currentTimeMillis() + " ";
+          log_entry += "Source:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
+          log_entry += "Destination:" + remote_ip + ":" + source_port + " ";
+          log_entry += "Ack_num:" + "n/a" + " ";
+          log_entry += "fin? " + local_fin + "\n";
+
+
+          bw.write(log_entry);
+          bw.flush();
           dsock.send(dpack); // send the packet 
 
           // make/send packet
           if (base == nextseqnum){
-            timer = System.currentTimeMillis();
+            packetTimer = System.currentTimeMillis();
           }
           nextseqnum++;
         }

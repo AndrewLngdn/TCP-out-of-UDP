@@ -60,6 +60,7 @@ public class Receiver {
     return result;
   }
 
+
   public static boolean checksumIsRight(byte[] packet){
     byte[] checksum = Arrays.copyOfRange(packet, 16, 18);
     byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
@@ -101,14 +102,17 @@ public class Receiver {
     byte[] checksum = Arrays.copyOfRange(header, 16, 18);
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
+    // seq_num = intFromByteArray(seq_num_a);
     headerHash.put("seq_num", intFromByteArray(seq_num_a));
     headerHash.put("ack_num", intFromByteArray(ack_num_a));
     headerHash.put("source_port", intFromByteArray(source_port_a));
     headerHash.put("dest_port", intFromByteArray(dest_port_a));
     headerHash.put("fin_flag", (Boolean)(flags[0] == (byte)1));
+    // ack_num = intFromByteArray(ack_num_a);
     return headerHash;
 
   }
+
 
   public static BufferedWriter openLogFile(String filename){
 
@@ -123,7 +127,7 @@ public class Receiver {
         file.createNewFile();
       }
  
-      FileWriter fw = new FileWriter(file.getAbsoluteFile());
+      FileWriter fw = new FileWriter(file.getAbsoluteFile(), true);
       return new BufferedWriter(fw);
 
     } catch (IOException e) {
@@ -149,13 +153,13 @@ public class Receiver {
     int remote_port= Integer.parseInt(args[3]);
     String log_filename = args[4];
 
+
     BufferedWriter bw = openLogFile(log_filename);
 
     DatagramSocket dsock = new DatagramSocket(listening_port); 
 
     int expected_seq_num = 0;
     int count = 0;
-
     while(!fin) { 
 
       byte[] buffer = new byte[576]; 
@@ -214,6 +218,7 @@ public class Receiver {
 
         dsock.send(spack); 
 
+      }
     } 
 
     bw.close();
