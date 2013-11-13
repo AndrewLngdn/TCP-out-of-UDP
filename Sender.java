@@ -86,6 +86,28 @@ public class Sender implements Runnable {
     return header;
   }
 
+  public static BufferedWriter openLogFile(String filename){
+    if (filename.equals("stdout")){
+      return new BufferedWriter(new OutputStreamWriter(System.out));
+    }
+
+    try {
+      File file = new File(filename);
+
+      if (!file.exists()) {
+        file.createNewFile();
+      }
+ 
+      FileWriter fw = new FileWriter(file.getAbsoluteFile());
+      return new BufferedWriter(fw);
+
+    } catch (IOException e) {
+      System.out.println("Couldn't create logfile");
+      e.printStackTrace();
+    }
+    return null;
+  }
+
   // all the stuff about the packet
   public static ArrayList<byte[]> packets = new ArrayList<byte[]>(); // holds packets for resending
   public static int nextseqnum = 0;     // sequence numbers start at 0
@@ -96,7 +118,6 @@ public class Sender implements Runnable {
   public static int remote_port;        // port to send data to
   public static int ack_port;           // port to recieve udp acks
   public static int window_size;        // 
-  public static String log_filename;    // name of log to write to
   public static int received_ack = 0;   // latest received ack
   public static byte[] file_bytes;      // byte array of file
   public static DatagramSocket dsock;   // socket to send over
@@ -119,6 +140,7 @@ public class Sender implements Runnable {
     log_filename = args[5];
     remote_addr = InetAddress.getByName(remote_ip); 
 
+    BufferedWriter bw = openLogFile(log_filename);
 
     // Load file as bytes
     FileInputStream fileInputStream = null;

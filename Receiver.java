@@ -60,10 +60,6 @@ public class Receiver {
     return result;
   }
 
-  // public static int seq_num;
-  // public static int ack_num;
-
-
   public static boolean checksumIsRight(byte[] packet){
     byte[] checksum = Arrays.copyOfRange(packet, 16, 18);
     byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
@@ -105,42 +101,22 @@ public class Receiver {
     byte[] checksum = Arrays.copyOfRange(header, 16, 18);
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-    // seq_num = intFromByteArray(seq_num_a);
     headerHash.put("seq_num", intFromByteArray(seq_num_a));
     headerHash.put("ack_num", intFromByteArray(ack_num_a));
     headerHash.put("source_port", intFromByteArray(source_port_a));
     headerHash.put("dest_port", intFromByteArray(dest_port_a));
     headerHash.put("fin_flag", (Boolean)(flags[0] == (byte)1));
-    // ack_num = intFromByteArray(ack_num_a);
     return headerHash;
 
   }
 
-  // public static boolean decodeHeader(byte[] packet){
-
-  //   byte[] header = Arrays.copyOfRange(packet, 0, 20);
-  //   byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
-
-  //   byte[] source_port_a = Arrays.copyOfRange(header, 0, 2);
-  //   byte[] dest_port_a = Arrays.copyOfRange(header, 2, 4);
-  //   byte[] seq_num_a = Arrays.copyOfRange(header, 4, 8);
-  //   byte[] ack_num_a = Arrays.copyOfRange(header, 8, 12);
-  //   byte[] header_len = Arrays.copyOfRange(header, 12, 13); // always 20
-  //   byte[] flags = Arrays.copyOfRange(header, 13, 14);
-  //   byte[] rec_window = Arrays.copyOfRange(header, 14, 16);
-  //   byte[] checksum = Arrays.copyOfRange(header, 16, 18);
-  //   byte[] urg = Arrays.copyOfRange(header, 18, 20);
-
-  //   seq_num = intFromByteArray(seq_num_a);
-  //   ack_num = intFromByteArray(ack_num_a);
-
-
-  //     return flags[0] == (byte)1;
-
-  // }
-
   public static BufferedWriter openLogFile(String filename){
-      try {
+
+    if (filename.equals("stdout")){
+      return new BufferedWriter(new OutputStreamWriter(System.out));
+    }
+
+    try {
       File file = new File(filename);
 
       if (!file.exists()) {
@@ -173,13 +149,13 @@ public class Receiver {
     int remote_port= Integer.parseInt(args[3]);
     String log_filename = args[4];
 
-
     BufferedWriter bw = openLogFile(log_filename);
 
     DatagramSocket dsock = new DatagramSocket(listening_port); 
 
     int expected_seq_num = 0;
     int count = 0;
+
     while(!fin) { 
 
       byte[] buffer = new byte[576]; 
@@ -201,9 +177,10 @@ public class Receiver {
       log_entry += "Source:" + remote_ip + ":" + source_port + " ";
       log_entry += "Destination:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
       log_entry += "Ack_num:" + "n/a" + " ";
-      log_entry += "fin? " + local_fin;
+      log_entry += "fin? " + local_fin + "\n";
 
       bw.write(log_entry);
+      bw.flush();
 
       Random r = new Random();
       int rand = r.nextInt();
@@ -211,8 +188,6 @@ public class Receiver {
       if (seq_num == expected_seq_num && checksumIsRight(packet) && rand%4!=0){ // also do checksum
 
         fin = local_fin;
-        // System.out.println("got expected packet");
-        // System.out.println("sending ack for " + expected_seq_num);
 
         byte[] data_without_header = Arrays.copyOfRange(packet, 20, packet.length);
 
@@ -221,18 +196,24 @@ public class Receiver {
         } else {
           file_bytes = concat(file_bytes, data_without_header);
         }
-        //send ack
 
+        //send ack
         byte[] ack_pack_data = makeHeader(listening_port, remote_port, expected_seq_num); 
         expected_seq_num++;
         InetAddress remote_addr = InetAddress.getByName(remote_ip);
         DatagramPacket spack = new DatagramPacket(ack_pack_data, ack_pack_data.length, remote_addr, remote_port); 
+
+        log_entry = "Time(ms): " + System.currentTimeMillis() + " ";
+        log_entry += "Source:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
+        log_entry += "Destination:" + remote_ip + ":" + source_port + " ";
+        log_entry += "Ack_num:" + expected_seq_num + " ";
+        log_entry += "fin? " + local_fin + "\n";
+
+        bw.write(log_entry);
+        bw.flush();
+
         dsock.send(spack); 
 
-      } else {
-        // System.out.println("dropping ack");
-      }
-      // System.out.println("----------------");
     } 
 
     bw.close();
