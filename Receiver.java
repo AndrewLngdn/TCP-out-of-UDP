@@ -145,14 +145,14 @@ public class Receiver {
 
       Random r = new Random();
       int rand = r.nextInt();
-      System.out.println(count++);
+      // System.out.println(count++);
 
       if (seq_num == expected_seq_num && checksumIsRight(packet) && rand%4!=0){ // also do checksum
 
         fin = local_fin;
 
-        System.out.println("got expected packet");
-        System.out.println("sending ack for " + expected_seq_num);
+        // System.out.println("got expected packet");
+        // System.out.println("sending ack for " + expected_seq_num);
 
         byte[] data_without_header = Arrays.copyOfRange(packet, 20, packet.length);
 
@@ -170,14 +170,19 @@ public class Receiver {
         dsock.send(spack); 
 
       } else {
-        System.out.println("dropping ack");
+        // System.out.println("dropping ack");
       }
-      System.out.println("----------------");
+      // System.out.println("----------------");
     } 
 
-    FileOutputStream fos = new FileOutputStream(filename);
-    fos.write(file_bytes);
-    fos.close();
-    System.out.println("finished");
+    try {
+      FileOutputStream fos = new FileOutputStream(filename);
+      fos.write(file_bytes);
+      fos.close();
+      System.out.println("Delivery completed successfully! New file: " + );
+    } catch (Exception e){
+      System.out.println("Unable to create output file");
+    }
+    
   } 
 }

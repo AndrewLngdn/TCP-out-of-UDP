@@ -53,7 +53,6 @@ public class Sender implements Runnable {
 
     received_ack = intFromByteArray(ack_num_a);
     int seq = intFromByteArray(seq_num_a);
-
   }
 
 
@@ -145,6 +144,7 @@ public class Sender implements Runnable {
       dsock = new DatagramSocket(ack_port);
       new Thread(new Sender()).start();
 
+
       // listen for acks
       while (true){
         byte[] buffer = new byte[576];
@@ -157,7 +157,13 @@ public class Sender implements Runnable {
 
         // if we get all the acks, then we're done!
         if (received_ack == number_of_packets_needed - 1){
-          System.out.println("got all the packets");
+          System.out.println("+----------------------------------<");
+          System.out.println("|Delivery completed successfully!!!");
+          System.out.println("|Total bytes sent = " + file_bytes.length);
+          System.out.println("|Total segments sent = " + total_packets_sent);
+          System.out.println("|Segments retransmitted = " + resent_packet_count);
+          System.out.println("+----------------------------------<");
+
           System.exit(0);
         }
       }
@@ -165,7 +171,6 @@ public class Sender implements Runnable {
     } catch (Exception e){
       e.printStackTrace();
     }
-    
   } 
 
   // packet maker, checks the sequence number and calculates what section of the 
@@ -178,15 +183,12 @@ public class Sender implements Runnable {
     byte[] packet = null;
 
     try {
-
       MessageDigest md = MessageDigest.getInstance("MD5");
 
       if (packet_data.length != 556){
-
         byte[] temp = new byte[556];
         System.arraycopy(packet_data, 0, temp, 0, packet_data.length);
         md.update(temp);
-
       } else {
         md.update(packet_data);
       }
@@ -218,9 +220,11 @@ public class Sender implements Runnable {
   public void resendPackets(){
     try {
       for (int i = base; i < packets.size(); i++){
-        System.out.println("resending packet " + i);
+        resent_packet_count++;
+        // System.out.println("resending packet " + i);
         byte[] packet = packets.get(i);
         DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
+        total_packets_sent++;
         dsock.send(dpack);
       }
     } catch (IOException e){
@@ -229,41 +233,40 @@ public class Sender implements Runnable {
   }
 
   public static long timer;
+  public static int total_packets_sent = 0;
+  public static int resent_packet_count = 0;
   public void run(){
-      try {
-        while(true){
+    try {
+      while(true){
 
-          // check for timeout
-            // long elapsedTime = (new Date()).getTime() - timer;
-            long elapsedTime = System.currentTimeMillis() - timer;
+        // check for timeout
+          // long elapsedTime = (new Date()).getTime() - timer;
+          long elapsedTime = System.currentTimeMillis() - timer;
 
-            if (elapsedTime > timeout){
-              // timer = (new Date()).getTime();
-              timer = System.currentTimeMillis();
-              resendPackets();
-            }
-
-          if (nextseqnum < base+window_size && nextseqnum < number_of_packets_needed){
-            // make packet here
-            byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
-
-            DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
-
-            dsock.send(dpack); // send the packet 
-
-            // make/send packet
-            if (base == nextseqnum){
-              timer = System.currentTimeMillis();
-            }
-
-            nextseqnum++;
+          if (elapsedTime > timeout){
+            // timer = (new Date()).getTime();
+            timer = System.currentTimeMillis();
+            resendPackets();
           }
-        }
-        
-      } catch (Exception e){
-        System.err.println("Eception: ");
-        e.printStackTrace();
-      }
 
+        if (nextseqnum < base+window_size && nextseqnum < number_of_packets_needed){
+          // make packet here
+          byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
+          DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
+
+          total_packets_sent++;
+          dsock.send(dpack); // send the packet 
+
+          // make/send packet
+          if (base == nextseqnum){
+            timer = System.currentTimeMillis();
+          }
+          nextseqnum++;
+        }
+      }
+    } catch (Exception e){
+      System.err.println("Eception: ");
+      e.printStackTrace();
+    }
   }
 } 
