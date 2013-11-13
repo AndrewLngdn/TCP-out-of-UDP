@@ -6,7 +6,6 @@ import java.security.MessageDigest;
 import java.io.*;
 import java.security.*;
 
-
 public class Receiver { 
 
   public static byte[] convertToFourBytes(int value) {
@@ -48,8 +47,11 @@ public class Receiver {
     return header;
   }
 
-  static int intFromByteArray(byte[] bytes) {
-    return ByteBuffer.wrap(bytes).getInt();
+  static Integer intFromByteArray(byte[] bytes) {
+    if (bytes.length != 4){
+      bytes = concat(new byte[2], bytes);
+    }
+    return (Integer)ByteBuffer.wrap(bytes).getInt();
   }
 
   public static byte[] concat(byte[] first, byte[] second) {
@@ -58,8 +60,8 @@ public class Receiver {
     return result;
   }
 
-  public static int seq_num;
-  public static int ack_num;
+  // public static int seq_num;
+  // public static int ack_num;
 
 
   public static boolean checksumIsRight(byte[] packet){
@@ -87,7 +89,8 @@ public class Receiver {
     return match;
   }
 
-  public static boolean decodeHeader(byte[] packet){
+  public static Hashtable<String, Object> decodeHeader(byte[] packet){
+    Hashtable<String, Object> headerHash = new Hashtable<String, Object>(); 
 
     byte[] header = Arrays.copyOfRange(packet, 0, 20);
     byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
@@ -102,14 +105,57 @@ public class Receiver {
     byte[] checksum = Arrays.copyOfRange(header, 16, 18);
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-    seq_num = intFromByteArray(seq_num_a);
-    ack_num = intFromByteArray(ack_num_a);
-
-
-      return flags[0] == (byte)1;
+    // seq_num = intFromByteArray(seq_num_a);
+    headerHash.put("seq_num", intFromByteArray(seq_num_a));
+    headerHash.put("ack_num", intFromByteArray(ack_num_a));
+    headerHash.put("source_port", intFromByteArray(source_port_a));
+    headerHash.put("dest_port", intFromByteArray(dest_port_a));
+    headerHash.put("fin_flag", (Boolean)(flags[0] == (byte)1));
+    // ack_num = intFromByteArray(ack_num_a);
+    return headerHash;
 
   }
 
+  // public static boolean decodeHeader(byte[] packet){
+
+  //   byte[] header = Arrays.copyOfRange(packet, 0, 20);
+  //   byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
+
+  //   byte[] source_port_a = Arrays.copyOfRange(header, 0, 2);
+  //   byte[] dest_port_a = Arrays.copyOfRange(header, 2, 4);
+  //   byte[] seq_num_a = Arrays.copyOfRange(header, 4, 8);
+  //   byte[] ack_num_a = Arrays.copyOfRange(header, 8, 12);
+  //   byte[] header_len = Arrays.copyOfRange(header, 12, 13); // always 20
+  //   byte[] flags = Arrays.copyOfRange(header, 13, 14);
+  //   byte[] rec_window = Arrays.copyOfRange(header, 14, 16);
+  //   byte[] checksum = Arrays.copyOfRange(header, 16, 18);
+  //   byte[] urg = Arrays.copyOfRange(header, 18, 20);
+
+  //   seq_num = intFromByteArray(seq_num_a);
+  //   ack_num = intFromByteArray(ack_num_a);
+
+
+  //     return flags[0] == (byte)1;
+
+  // }
+
+  public static BufferedWriter openLogFile(String filename){
+      try {
+      File file = new File(filename);
+
+      if (!file.exists()) {
+        file.createNewFile();
+      }
+ 
+      FileWriter fw = new FileWriter(file.getAbsoluteFile());
+      return new BufferedWriter(fw);
+
+    } catch (IOException e) {
+      System.out.println("Couldn't create logfile");
+      e.printStackTrace();
+    }
+    return null;
+  }
 
   public static boolean fin = false;
   public static void main( String args[]) throws Exception { 
@@ -127,30 +173,44 @@ public class Receiver {
     int remote_port= Integer.parseInt(args[3]);
     String log_filename = args[4];
 
+
+    BufferedWriter bw = openLogFile(log_filename);
+
     DatagramSocket dsock = new DatagramSocket(listening_port); 
 
     int expected_seq_num = 0;
-
     int count = 0;
-
     while(!fin) { 
 
       byte[] buffer = new byte[576]; 
       DatagramPacket rpack = new DatagramPacket(buffer, buffer.length);
 
-      dsock.receive(rpack);  
+      dsock.receive(rpack); 
+
 
       byte[] packet = rpack.getData();
-      boolean local_fin = decodeHeader(packet);
+      Hashtable<String, Object> header = decodeHeader(packet);
+      Integer seq_num = (Integer) header.get("seq_num");
+      Integer source_port = (Integer) header.get("source_port");
+      Integer dest_port = (Integer) header.get("dest_port");
+      Integer ack_num = (Integer) header.get("ack_num");
+      Boolean local_fin = (Boolean)header.get("fin_flag");
+
+
+      String log_entry = "Time(ms): " + System.currentTimeMillis() + " ";
+      log_entry += "Source:" + remote_ip + ":" + source_port + " ";
+      log_entry += "Destination:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
+      log_entry += "Ack_num:" + "n/a" + " ";
+      log_entry += "fin? " + local_fin;
+
+      bw.write(log_entry);
 
       Random r = new Random();
       int rand = r.nextInt();
-      // System.out.println(count++);
 
       if (seq_num == expected_seq_num && checksumIsRight(packet) && rand%4!=0){ // also do checksum
 
         fin = local_fin;
-
         // System.out.println("got expected packet");
         // System.out.println("sending ack for " + expected_seq_num);
 
@@ -175,11 +235,14 @@ public class Receiver {
       // System.out.println("----------------");
     } 
 
+    bw.close();
     try {
       FileOutputStream fos = new FileOutputStream(filename);
       fos.write(file_bytes);
       fos.close();
-      System.out.println("Delivery completed successfully! New file: " + filename);
+      System.out.println("+-------------------------------------------------------<");
+      System.out.println("|Delivery completed successfully! New file: " + filename);
+      System.out.println("+-------------------------------------------------------<");
     } catch (Exception e){
       System.out.println("Unable to create output file");
     }
