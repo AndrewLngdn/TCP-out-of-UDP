@@ -179,7 +179,7 @@ public class Receiver {
       FileOutputStream fos = new FileOutputStream(filename);
       fos.write(file_bytes);
       fos.close();
-      System.out.println("Delivery completed successfully! New file: " + );
+      System.out.println("Delivery completed successfully! New file: " + filename);
     } catch (Exception e){
       System.out.println("Unable to create output file");
     }
