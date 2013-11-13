@@ -197,14 +197,19 @@ public class Sender implements Runnable {
         log_entry += "Source:" + remote_ip + ":" + source_port + " ";
         log_entry += "Destination:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
         log_entry += "Ack_num:" + ack_num + " ";
-        log_entry += "fin? " + local_fin + "\n";
+        log_entry += "fin? " + local_fin + "";
+
+        oldRTT = System.currentTimeMillis()-packetTimer.get(seq_num);
+        log_entry += "RTT " + oldRTT + "\n";
+
 
         bw.write(log_entry);
         bw.flush();
 
+        timeout -= Math.min(50, timeout - 1);
+
         // if we get all the acks, then we're done!
         if (received_ack == number_of_packets_needed - 1){
-          bw.close();
           System.out.println("+----------------------------------<");
           System.out.println("|Delivery completed successfully!!!");
           System.out.println("|Total bytes sent = " + file_bytes.length);
@@ -212,6 +217,7 @@ public class Sender implements Runnable {
           System.out.println("|Segments retransmitted = " + resent_packet_count);
           System.out.println("+----------------------------------<");
 
+          bw.close();
           System.exit(0);
         }
       }
@@ -269,7 +275,7 @@ public class Sender implements Runnable {
     try {
       for (int i = base; i < packets.size(); i++){
         resent_packet_count++;
-        // System.out.println("resending packet " + i);
+
         byte[] packet = packets.get(i);
         DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
 
@@ -287,26 +293,31 @@ public class Sender implements Runnable {
         log_entry += "fin? " + local_fin + "\n";
 
         bw.write(log_entry);
-        
+
+        packetTimer.add(i, (Long)System.currentTimeMillis());
         dsock.send(dpack);
       }
     } catch (IOException e){
       e.printStackTrace();
     }
   }
-
-  public static long packetTimer;
+  public static Long oldRTT; 
+  public static long timeoutTimer;
+  public static ArrayList<Long> packetTimer = new ArrayList<Long>();
   public static int total_packets_sent = 0;
   public static int resent_packet_count = 0;
   public void run(){
+    long calculatedTimeout = 1;
     try {
       while(true){
 
         // check for timeout
-        long elapsedTime = System.currentTimeMillis() - packetTimer;
-
+        long elapsedTime = System.currentTimeMillis() - timeoutTimer;
+        System.out.println("timer: " + timeout);
         if (elapsedTime > timeout){
-          packetTimer = System.currentTimeMillis();
+          timeoutTimer = System.currentTimeMillis();
+          timeout *= 2;
+          // timeoutTimer = System.currentTimeMillis();
           resendPackets();
         }
 
@@ -332,12 +343,12 @@ public class Sender implements Runnable {
           bw.write(log_entry);
           bw.flush();
           dsock.send(dpack); // send the packet 
-
-          // make/send packet
-          if (base == nextseqnum){
-            packetTimer = System.currentTimeMillis();
-          }
+          packetTimer.add(nextseqnum, (Long)System.currentTimeMillis());
           nextseqnum++;
+          
+          if (base == nextseqnum){
+            timeoutTimer = System.currentTimeMillis();
+          }
         }
       }
     } catch (Exception e){

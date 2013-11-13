@@ -189,7 +189,7 @@ public class Receiver {
       Random r = new Random();
       int rand = r.nextInt();
 
-      if (seq_num == expected_seq_num && checksumIsRight(packet) && rand%4!=0){ // also do checksum
+      if (seq_num == expected_seq_num && checksumIsRight(packet) ){ // also do checksum
 
         fin = local_fin;
 
@@ -221,7 +221,6 @@ public class Receiver {
       }
     } 
 
-    bw.close();
     try {
       FileOutputStream fos = new FileOutputStream(filename);
       fos.write(file_bytes);
@@ -232,6 +231,7 @@ public class Receiver {
     } catch (Exception e){
       System.out.println("Unable to create output file");
     }
-    
+
+    bw.close();
   } 
 }
