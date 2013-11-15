@@ -5,9 +5,11 @@ import java.io.*;
 import java.security.*;
 
 
+// Threaded class so we can receive acks and send packets
+// at the same time 
 public class Sender implements Runnable { 
 
-  // ints to four bytes
+  // ints to four bytes, for header
   public static byte[] convertToFourBytes(int value) {
       byte[] r = new byte[4];
       r[0] = (byte)(value >>> 24);
@@ -17,7 +19,7 @@ public class Sender implements Runnable {
       return r;
   }
 
-  //ints to two bytes
+  //ints to two bytes, for header
   public static byte[] convertToTwoBytes(int i){
     byte[] result = new byte[2];
     result[0] = (byte) (i >> 8);
@@ -32,7 +34,7 @@ public class Sender implements Runnable {
     return result;
   }
 
-  // get an int from a byte array
+  // get an int from a byte array. For ack numbers, ports, etc
   static Integer intFromByteArray(byte[] bytes) {
     if (bytes.length != 4){
       bytes = concat(new byte[2], bytes);
@@ -40,7 +42,8 @@ public class Sender implements Runnable {
     return (Integer)ByteBuffer.wrap(bytes).getInt();
   }
 
-  // used to decode the ack header
+  // used to decode the ack header, returns a hash
+  // with all the relevant header info 
   public static Hashtable<String, Object> decodeHeader(byte[] packet){
     Hashtable<String, Object> headerHash = new Hashtable<String, Object>(); 
 
@@ -64,7 +67,7 @@ public class Sender implements Runnable {
   }
 
 
-  //used to make the packet header
+  // used to make the packet header. Sets all the info 
   public static byte[] makeHeader(int sPort, int dPort, int seq_num, boolean fin, byte[] checksum){
     byte[] header = new byte[20];
 
@@ -95,12 +98,11 @@ public class Sender implements Runnable {
   }
 
 
-  // opens a file for the logger 
+  // opens a file for the logger, or prints to stdout
   public static BufferedWriter openLogFile(String filename){
     if (filename.equals("stdout")){
       return new BufferedWriter(new OutputStreamWriter(System.out));
     }
-
     try {
       File file = new File(filename);
 
@@ -118,11 +120,11 @@ public class Sender implements Runnable {
     return null;
   }
 
-  // all the stuff about the packet
+  // all the static stuff about the packet
   public static ArrayList<byte[]> packets = new ArrayList<byte[]>(); // holds packets for resending
   public static int nextseqnum = 0;     // sequence numbers start at 0
   public static int base = 0;           // base of window
-  public static int timeout = 50;       // timout
+  public static int timeout = 50;       // timout starts at 50 but is recalculated
   public static String filename;        // file to send out
   public static String remote_ip;       // remote host
   public static int remote_port;        // port to send data to
@@ -136,12 +138,16 @@ public class Sender implements Runnable {
   public static int payload_size = 576; // size of entire packet
   public static BufferedWriter bw;
 
+
+  // the thread that stays in main listens for acks and manipulates
+  // the timeout time. it is also where the file-transfer ends
   public static void main( String args[] ) throws Exception { 
 
     if (args.length != 6){
       System.out.println("java Sender [filename] [remote_IP] [remote_port] [ack_port_number] [window_size] [log_filename]");
       System.exit(1);
     } 
+
 
     filename = args[0];
     remote_ip = args[1];
@@ -150,6 +156,10 @@ public class Sender implements Runnable {
     window_size = Integer.parseInt(args[4]);
     String log_filename = args[5];
     remote_addr = InetAddress.getByName(remote_ip); 
+
+    if (remote_port <= 0 || ack_port <= 0 || window_size <= 0){
+      System.out.println("port numbers and window size must be greater than 0");
+    }
 
     bw = openLogFile(log_filename);
 
@@ -197,16 +207,19 @@ public class Sender implements Runnable {
         log_entry += "Source:" + remote_ip + ":" + source_port + " ";
         log_entry += "Destination:" + InetAddress.getLocalHost() + ":" + dest_port + " ";
         log_entry += "Ack_num:" + ack_num + " ";
-        log_entry += "fin? " + local_fin + "";
-
+        log_entry += "fin? " + local_fin + " ";
+      
         oldRTT = System.currentTimeMillis()-packetTimer.get(seq_num);
+        timeout = (int)(0.25 * timeout + 0.75 * Math.max(oldRTT, 1));
+        System.out.println(timeout);
+        // newRTT = System.currentTimeMillis()-packetTimer.get(seq_num);
         log_entry += "RTT " + oldRTT + "\n";
 
 
         bw.write(log_entry);
         bw.flush();
 
-        timeout -= Math.min(50, timeout - 1);
+        // timeout -= Math.min(50, timeout - 1);
 
         // if we get all the acks, then we're done!
         if (received_ack == number_of_packets_needed - 1){
@@ -228,7 +241,7 @@ public class Sender implements Runnable {
   } 
 
   // packet maker, checks the sequence number and calculates what section of the 
-  // data should be packaged and sent
+  // data should be packaged and sent. Sets the correct header too
   public static byte[] make_pkt(int nextseqnum, byte[] file_bytes, int ack_port, int remote_port){
     int data_start = nextseqnum * 556;
     int data_end = Math.min((nextseqnum + 1)*556, file_bytes.length);
@@ -271,6 +284,7 @@ public class Sender implements Runnable {
     return packet;
   }
 
+  // GBN-style resend method. Also prints to log
   public void resendPackets(){
     try {
       for (int i = base; i < packets.size(); i++){
@@ -301,32 +315,37 @@ public class Sender implements Runnable {
       e.printStackTrace();
     }
   }
+
+  // This stuff is for logging and for the timer
   public static Long oldRTT; 
   public static long timeoutTimer;
   public static ArrayList<Long> packetTimer = new ArrayList<Long>();
   public static int total_packets_sent = 0;
   public static int resent_packet_count = 0;
+
+  // the run method calls make_pkt and sends them out.
+  // it also keeps track of the timer 
   public void run(){
     long calculatedTimeout = 1;
     try {
       while(true){
 
-        // check for timeout
+        // check for timeout. If it does, double the timeout time. 
+
         long elapsedTime = System.currentTimeMillis() - timeoutTimer;
-        System.out.println("timer: " + timeout);
         if (elapsedTime > timeout){
           timeoutTimer = System.currentTimeMillis();
           timeout *= 2;
-          // timeoutTimer = System.currentTimeMillis();
           resendPackets();
         }
 
+        // if we're not at the end of the window and we have more packets to send,
+        // make the packet, log the send, and then increment the sequence number
         if (nextseqnum < base+window_size && nextseqnum < number_of_packets_needed){
-          // make packet here
+
           byte[] packet = make_pkt(nextseqnum, file_bytes, ack_port, remote_port);
           DatagramPacket dpack = new DatagramPacket(packet, packet.length, remote_addr, remote_port); 
 
-          total_packets_sent++;
           Hashtable<String, Object> header = decodeHeader(dpack.getData()); // decode the header and load the ack number
           Integer seq_num = (Integer) header.get("seq_num");
           Integer source_port = (Integer) header.get("source_port");
@@ -339,9 +358,10 @@ public class Sender implements Runnable {
           log_entry += "Ack_num:" + "n/a" + " ";
           log_entry += "fin? " + local_fin + "\n";
 
-
           bw.write(log_entry);
           bw.flush();
+          
+          total_packets_sent++;
           dsock.send(dpack); // send the packet 
           packetTimer.add(nextseqnum, (Long)System.currentTimeMillis());
           nextseqnum++;

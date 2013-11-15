@@ -39,15 +39,11 @@ The code supports arbitrary window sizes above 0.
 All packets are logged with packet info when the info is meaningful,
 and uses 'n/a' when it isn't.
 
-The retransmission timer is doubled when a timeout occurs, and reduces 
-by 50ms when a packet, being careful that he timeout doesn't get to 0.
-// change this to TCP style 
+Retransmission timer is calculated like this:
+timeout = (int)(0.25 * timeout + 0.75 * Math.max(oldRTT, 1));
 
 The TCP header is 20 bytes, with the unused bytes padded with undefined
 numbers. Only the fin flag is relevant and the header size is always 20
 bytes, so that entire region is represented by a 1 if the fin flag is set
 or a 0 if it is not.
-
-// update the checksum so it goes over the header but not the 
-// checksum part. 
 

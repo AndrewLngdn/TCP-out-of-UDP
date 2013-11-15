@@ -8,6 +8,7 @@ import java.security.*;
 
 public class Receiver { 
 
+  // convert an int to four bytes, for acks, sequence numbers
   public static byte[] convertToFourBytes(int value) {
       byte[] r = new byte[4];
       r[0] = (byte)(value >>> 24);
@@ -17,6 +18,7 @@ public class Receiver {
       return r;
   }
 
+  // convert an int to two bytes, for ports
   public static byte[] convertToTwoBytes(int i){
     byte[] result = new byte[2];
     result[0] = (byte) (i >> 8);
@@ -24,6 +26,7 @@ public class Receiver {
     return result;
   }
 
+  // given integers, this creats a byte array header
   public static byte[] makeHeader(int sPort, int dPort, int seq_num){
     byte[] header = new byte[20];
 
@@ -47,6 +50,8 @@ public class Receiver {
     return header;
   }
 
+  // converts byte array to integer. pads byte array if it's
+  // too short
   static Integer intFromByteArray(byte[] bytes) {
     if (bytes.length != 4){
       bytes = concat(new byte[2], bytes);
@@ -54,13 +59,14 @@ public class Receiver {
     return (Integer)ByteBuffer.wrap(bytes).getInt();
   }
 
+  // tacks two byte arrays together
   public static byte[] concat(byte[] first, byte[] second) {
     byte[] result = Arrays.copyOf(first, first.length + second.length);
     System.arraycopy(second, 0, result, first.length, second.length);
     return result;
   }
 
-
+  // check checksum to see if it checks out
   public static boolean checksumIsRight(byte[] packet){
     byte[] checksum = Arrays.copyOfRange(packet, 16, 18);
     byte[] packet_data = Arrays.copyOfRange(packet, 20, packet.length);
@@ -81,11 +87,14 @@ public class Receiver {
       }
 
     } catch (Exception e){
-
+      System.out.println("Java Checksum Library error");
+      e.printStackTrace();
     }
     return match;
   }
 
+  // used to decode the ack header, returns a hash
+  // with all the relevant header info
   public static Hashtable<String, Object> decodeHeader(byte[] packet){
     Hashtable<String, Object> headerHash = new Hashtable<String, Object>(); 
 
@@ -102,18 +111,16 @@ public class Receiver {
     byte[] checksum = Arrays.copyOfRange(header, 16, 18);
     byte[] urg = Arrays.copyOfRange(header, 18, 20);
 
-    // seq_num = intFromByteArray(seq_num_a);
     headerHash.put("seq_num", intFromByteArray(seq_num_a));
     headerHash.put("ack_num", intFromByteArray(ack_num_a));
     headerHash.put("source_port", intFromByteArray(source_port_a));
     headerHash.put("dest_port", intFromByteArray(dest_port_a));
     headerHash.put("fin_flag", (Boolean)(flags[0] == (byte)1));
-    // ack_num = intFromByteArray(ack_num_a);
     return headerHash;
 
   }
 
-
+  // opens a log file for logging 
   public static BufferedWriter openLogFile(String filename){
 
     if (filename.equals("stdout")){
@@ -137,6 +144,8 @@ public class Receiver {
     return null;
   }
 
+
+  // flag to see if we're done getting the file
   public static boolean fin = false;
   public static void main( String args[]) throws Exception { 
 
@@ -160,6 +169,10 @@ public class Receiver {
 
     int expected_seq_num = 0;
     int count = 0;
+
+    // while we don't have the fin packet,
+    // extract the data, see if it's in order,
+    // and if it is, then add it to our file byte array
     while(!fin) { 
 
       byte[] buffer = new byte[576]; 
@@ -186,9 +199,9 @@ public class Receiver {
       bw.write(log_entry);
       bw.flush();
 
-      Random r = new Random();
-      int rand = r.nextInt();
-
+      // if the packet is in order and correct, 
+      // strip off the header and add the data to our 
+      // output file byte array      
       if (seq_num == expected_seq_num && checksumIsRight(packet) ){ // also do checksum
 
         fin = local_fin;
@@ -201,7 +214,7 @@ public class Receiver {
           file_bytes = concat(file_bytes, data_without_header);
         }
 
-        //send ack
+        //send ack packet over UDP
         byte[] ack_pack_data = makeHeader(listening_port, remote_port, expected_seq_num); 
         expected_seq_num++;
         InetAddress remote_addr = InetAddress.getByName(remote_ip);
@@ -221,6 +234,7 @@ public class Receiver {
       }
     } 
 
+    // if we get here, we're done! woot
     try {
       FileOutputStream fos = new FileOutputStream(filename);
       fos.write(file_bytes);
